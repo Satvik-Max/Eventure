@@ -1,0 +1,9 @@
+{
+  "name": "Eventure Ticket",
+  "description": "A blockchain-powered ticket for your favorite event.",
+  "image": "https://imgs.search.brave.com/Hx5Xe1VpiCUUIVQ27hSfp5Ypu6IRe8ECXv9E1M11aJ8/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly9tZWRp/YS5pc3RvY2twaG90/by5jb20vaWQvMTEy/NjEyNTU0My92ZWN0/b3IvZGVjZW50cmFs/aXplZC1pY29uLXRy/ZW5keS1kZWNlbnRy/YWxpemVkLWxvZ28t/Y29uY2VwdC1vbi13/aGl0ZS1iYWNrZ3Jv/dW5kLWZyb20tY3J5/cHRvY3VycmVuY3ku/anBnP3M9NjEyeDYx/MiZ3PTAmaz0yMCZj/PW85czl6eTB5c2dB/T1lfQ0ZJYUJRN3M5/MU43Y2VOa0tOZEp2/eG5RVUVkaXM9",
+  "attributes": [
+    { "trait_type": "Platform", "value": "Eventure" },
+    { "trait_type": "Type", "value": "General Admission" }
+  ]
+}
