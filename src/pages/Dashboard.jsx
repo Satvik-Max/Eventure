@@ -8,12 +8,25 @@ import EventureABI from '../abi/EventureNFT.json';
 
 const CONTRACT_ADDRESS = '0x3222f1326A699a1fD84b3BB3F67b03D9d35Eea25'; 
 
+// Helper function to check if event date has passed
+const isEventExpired = (eventDate) => {
+  const currentDate = new Date();
+  const eventDateTime = new Date(eventDate);
+  return eventDateTime < currentDate;
+};
+
 async function handleBuyTicket(event, userEmail, walletAddress) {
   try {
     console.log(" Pressed ");
     if (!walletAddress) 
         throw new Error('Please connect your wallet first');
     if (!window.ethereum) throw new Error('Please install MetaMask');
+    
+    // Check if event date has passed
+    if (isEventExpired(event.date)) {
+      throw new Error('⏰ Sorry, you\'re late! This event has already passed.');
+    }
+    
     console.log(" Cheaking User ");
     if (
       walletAddress.toLowerCase() === String(event.organizer_wallet).toLowerCase()
@@ -438,6 +451,16 @@ export default function Dashboard() {
           transform: none;
         }
 
+        /* Expired event styling */
+        .event-expired {
+          opacity: 0.6;
+          border-color: #444;
+        }
+
+        .event-expired::before {
+          background: linear-gradient(90deg, #666, #444);
+        }
+
         /* Responsive Design */
         @media (max-width: 768px) {
           header {
@@ -531,22 +554,39 @@ export default function Dashboard() {
             {events.length === 0 ? (
               <p>No events yet. Be the first to create one!</p>
             ) : (
-              events.map((event) => (
-                <div className="event-card" key={event.event_id}>
-                  <h3>{event.name}</h3>
-                  <p>{event.description}</p>
-                  <p className="location-info"><strong>Location:</strong> {event.location}</p>
-                  <p className="date-info"><strong>Date:</strong> {new Date(event.date).toLocaleString()}</p>
-                  <p className="price-info"><strong>Price:</strong> {event.price_wei} wei</p>
-                  <p className="tickets-info"><strong>Max Tickets:</strong> {event.max_ticket}</p>
-                  <p className="organizer-info"><strong>Organizer:</strong> {event.organizer_email}</p>
-                  <button 
-                  onClick={() => handleBuyClick(event)}
-                >
-                  Buy Ticket
-                </button>
-                              </div>
-              ))
+              events.map((event) => {
+                const eventExpired = isEventExpired(event.date);
+                const isDisabled = event.is_cancelled || eventExpired;
+                
+                return (
+                  <div 
+                    className={`event-card ${eventExpired ? 'event-expired' : ''}`} 
+                    key={event.event_id}
+                  >
+                    <h3>{event.name}</h3>
+                    {event.is_cancelled && (
+                        <p style={{ color: 'red', fontWeight: 'bold' }}>❌ This event is canceled</p>
+                    )}
+                    {eventExpired && !event.is_cancelled && (
+                        <p style={{ color: 'orange', fontWeight: 'bold' }}>⏰ Sorry, you're late! This event has passed</p>
+                    )}
+                    <p>{event.description}</p>
+                    <p className="location-info"><strong>Location:</strong> {event.location}</p>
+                    <p className="date-info"><strong>Date:</strong> {new Date(event.date).toLocaleString()}</p>
+                    <p className="price-info"><strong>Price:</strong> {event.price_wei} wei</p>
+                    <p className="tickets-info"><strong>Max Tickets:</strong> {event.max_ticket}</p>
+                    <p className="organizer-info"><strong>Organizer:</strong> {event.organizer_email}</p>
+                    
+                    <button 
+                        onClick={() => handleBuyClick(event)}
+                        disabled={isDisabled}
+                    >
+                        {event.is_cancelled ? 'Cancelled' : 
+                         eventExpired ? 'Event Passed' : 'Buy Ticket'}
+                    </button>
+                  </div>
+                );
+              })
             )}
           </div>
         </section>

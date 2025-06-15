@@ -13,16 +13,62 @@ export default function MyTickets() {
       const { data, error } = await supabase
         .from('tickets')
         .select(`
+          id,
           attended,
+          refunded,
           events (
             name,
             location,
-            date
+            date,
+            is_cancelled
           )
         `)
         .eq('user_email', user.email);
 
-      if (!error) setTickets(data);
+      if (error) {
+        setLoading(false);
+        return;
+      }
+
+      // Process tickets to check for missed events
+      const processedTickets = await Promise.all(data.map(async (ticket) => {
+        const eventDate = new Date(ticket.events?.date);
+        const now = new Date();
+        const isEventPassed = eventDate < now;
+        const isMissed = isEventPassed && !ticket.attended && !ticket.events?.is_cancelled;
+
+        if (isMissed) {
+          // Update user reputation
+          const { data: userData } = await supabase
+            .from('profiles')
+            .select('reputation')
+            .eq('email', user.email)
+            .single();
+
+          if (userData) {
+            const newReputation = Math.max(0, userData.reputation - 2);
+            await supabase
+              .from('profiles')
+              .update({ reputation: newReputation })
+              .eq('email', user.email);
+
+            // Mark ticket as processed to avoid repeated reputation deductions
+            await supabase
+              .from('tickets')
+              .update({ attended: false }) // or add a new column like 'reputation_updated'
+              .eq('id', ticket.id);
+          }
+
+          return {
+            ...ticket,
+            missedEvent: true
+          };
+        }
+
+        return ticket;
+      }));
+
+      setTickets(processedTickets);
       setLoading(false);
     };
     fetchTickets();
@@ -37,24 +83,40 @@ export default function MyTickets() {
       <div className="my-tickets-container">
         <h1 className="page-title">My Tickets</h1>
         <ul className="tickets-list">
-          {tickets.map((ticket) => (
-            <li key={ticket.id || ticket.tx_hash} className="ticket-card">
-              <h2 className="event-name">{ticket.events?.name || '[Event missing]'}</h2>
-              <p className="event-detail">
-                <strong>Location:</strong> {ticket.events?.location || 'N/A'}
-              </p>
-              <p className="event-detail">
-                <strong>Date:</strong> {ticket.events?.date ? new Date(ticket.events.date).toLocaleString() : 'N/A'}
-              </p>
-              <p className="status-container">
-                <strong>Status:</strong>
-                {ticket.attended
-                  ? <span className="status-attended">✔ Attended</span>
-                  : <span className="status-pending">⏳ Not Attended</span>
-                }
-              </p>
-            </li>
-          ))}
+          {tickets.map((ticket) => {
+            const eventDate = ticket.events?.date ? new Date(ticket.events.date) : null;
+            const isEventPassed = eventDate && eventDate < new Date();
+            
+            return (
+              <li key={ticket.id} className="ticket-card">
+                <h2 className="event-name">{ticket.events?.name || '[Event missing]'}</h2>
+                <p className="event-detail">
+                  <strong>Location:</strong> {ticket.events?.location || 'N/A'}
+                </p>
+                <p className="event-detail">
+                  <strong>Date:</strong> {eventDate ? eventDate.toLocaleString() : 'N/A'}
+                </p>
+                {isEventPassed && !ticket.attended && !ticket.events?.is_cancelled && (
+                  <p className="event-detail missed-event">
+                    <strong>Note:</strong> <span style={{ color: 'red' }}>Event is gone! You missed it.</span>
+                  </p>
+                )}
+               <p className="event-detail">
+                <strong>Status:</strong>{' '}
+                {ticket.events?.is_cancelled 
+                    ? <>
+                        <span style={{ color: 'red' }}>❌ Cancelled</span>
+                        {ticket.refunded 
+                        ? <span style={{ color: 'green', marginLeft: '0.5rem' }}>(Refunded)</span>
+                        : <span style={{ color: 'orange', marginLeft: '0.5rem' }}>(Not Refunded)</span>}
+                    </>
+                    : ticket.attended 
+                    ? <span className="status-attended">✔ Attended</span>
+                    : <span className="status-pending">⏳ Not Attended</span>}
+                </p>
+              </li>
+            );
+          })}
         </ul>
       </div>
       <style jsx>{`
@@ -115,6 +177,10 @@ export default function MyTickets() {
           margin: 0.75rem 0;
           color: #ccc;
           line-height: 1.5;
+        }
+
+        .event-detail.missed-event {
+          color: #ff6b6b;
         }
 
         .event-detail strong {
