@@ -6,7 +6,7 @@ import { Link } from 'react-router-dom';
 import { BrowserProvider , Contract} from 'ethers';
 import EventureABI from '../abi/EventureNFT.json';
 
-const CONTRACT_ADDRESS = '0x3222f1326A699a1fD84b3BB3F67b03D9d35Eea25'; 
+const CONTRACT_ADDRESS = '0x985876c89bcD9a0eE777A94A1c494a25467Cbee9'; 
 
 // Helper function to check if event date has passed
 const isEventExpired = (eventDate) => {
@@ -140,6 +140,7 @@ export default function Dashboard() {
   const [events, setEvents] = useState([]);
   const [walletAddress, setWalletAddress] = useState('');
   const [userEmail, setUserEmail] = useState('');
+  const [eventFilter, setEventFilter] = useState('upcoming'); // 'upcoming', 'past', 'all'
 
    const handleBuyClick = async (event) => {
     if (!walletAddress) {
@@ -150,6 +151,16 @@ export default function Dashboard() {
       await handleBuyTicket(event, userEmail, walletAddress);
     } finally {
     }
+  };
+
+  // Filter events based on selected filter
+  const getFilteredEvents = () => {
+    if (eventFilter === 'all') return events;
+    
+    return events.filter(event => {
+      const expired = isEventExpired(event.date);
+      return eventFilter === 'upcoming' ? !expired : expired;
+    });
   };
 
   useEffect(() => {
@@ -185,6 +196,8 @@ export default function Dashboard() {
       supabase.removeChannel(subscription);
     };
   }, []);
+
+  const filteredEvents = getFilteredEvents();
 
   return (    
     <>
@@ -287,7 +300,16 @@ export default function Dashboard() {
           padding: 3rem;
         }
 
-        .explore h2 {
+        .explore-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 2rem;
+          flex-wrap: wrap;
+          gap: 1rem;
+        }
+
+        .explore-header .title-section h2 {
           font-size: 2rem;
           font-weight: 600;
           margin-bottom: 0.5rem;
@@ -297,10 +319,49 @@ export default function Dashboard() {
           background-clip: text;
         }
 
-        .explore > p {
+        .explore-header .title-section p {
           color: #999;
-          margin-bottom: 2rem;
           font-size: 1.1rem;
+        }
+
+        /* Filter Buttons */
+        .filter-buttons {
+          display: flex;
+          gap: 0.5rem;
+          background: rgba(255, 255, 255, 0.05);
+          padding: 0.5rem;
+          border-radius: 12px;
+          border: 1px solid #333;
+        }
+
+        .filter-btn {
+          padding: 0.6rem 1.2rem;
+          border: none;
+          background: transparent;
+          color: #999;
+          border-radius: 8px;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          font-size: 0.9rem;
+          font-weight: 500;
+        }
+
+        .filter-btn:hover {
+          color: #ffffff;
+          background: rgba(255, 255, 255, 0.1);
+          transform: none;
+          box-shadow: none;
+        }
+
+        .filter-btn.active {
+          background: linear-gradient(135deg, #ffffff, #cccccc);
+          color: #000000;
+          font-weight: 600;
+        }
+
+        .filter-btn.active:hover {
+          background: linear-gradient(135deg, #cccccc, #999999);
+          color: #000000;
         }
 
         /* Event List */
@@ -461,6 +522,13 @@ export default function Dashboard() {
           background: linear-gradient(90deg, #666, #444);
         }
 
+        /* Event count display */
+        .event-count {
+          color: #666;
+          font-size: 0.9rem;
+          margin-top: 0.5rem;
+        }
+
         /* Responsive Design */
         @media (max-width: 768px) {
           header {
@@ -480,6 +548,16 @@ export default function Dashboard() {
 
           .explore {
             padding: 2rem 1.5rem;
+          }
+
+          .explore-header {
+            flex-direction: column;
+            align-items: stretch;
+          }
+
+          .filter-buttons {
+            align-self: stretch;
+            justify-content: center;
           }
 
           .event-list {
@@ -547,14 +625,46 @@ export default function Dashboard() {
         </section>
 
         <section className="explore">
-          <h2>Discover Amazing Events</h2>
-          <p>Find and attend the best events around you.</p>
+          <div className="explore-header">
+            <div className="title-section">
+              <h2>Discover Amazing Events</h2>
+              <p>Find and attend the best events around you.</p>
+              <div className="event-count">
+                Showing {filteredEvents.length} of {events.length} events
+              </div>
+            </div>
+            
+            <div className="filter-buttons">
+              <button 
+                className={`filter-btn ${eventFilter === 'upcoming' ? 'active' : ''}`}
+                onClick={() => setEventFilter('upcoming')}
+              >
+                🚀 Upcoming
+              </button>
+              <button 
+                className={`filter-btn ${eventFilter === 'past' ? 'active' : ''}`}
+                onClick={() => setEventFilter('past')}
+              >
+                📚 Past
+              </button>
+              <button 
+                className={`filter-btn ${eventFilter === 'all' ? 'active' : ''}`}
+                onClick={() => setEventFilter('all')}
+              >
+                📋 All
+              </button>
+            </div>
+          </div>
 
           <div className="event-list">
-            {events.length === 0 ? (
-              <p>No events yet. Be the first to create one!</p>
+            {filteredEvents.length === 0 ? (
+              <p>
+                {eventFilter === 'upcoming' && 'No upcoming events yet. Be the first to create one!'}
+                {eventFilter === 'past' && 'No past events found.'}
+                {eventFilter === 'all' && 'No events yet. Be the first to create one!'}
+              </p>
             ) : (
-              events.map((event) => {
+              filteredEvents.map((event) => {
                 const eventExpired = isEventExpired(event.date);
                 const isDisabled = event.is_cancelled || eventExpired;
                 
