@@ -7,6 +7,7 @@ import Profile from './pages/Profile';
 import CreateEvent from './pages/CreatEvent';
 import MyTickets from './pages/Mytickets';
 import Myevents from './pages/Myevents';
+import Resale from './pages/Resale';
 
 function generateRandomName() {
   const adjectives = ['Clever', 'Brave', 'Swift', 'Happy', 'Wise', 'Bold'];
@@ -76,7 +77,6 @@ function ProtectedRoute({ children }) {
           }
         }
 
-        // Then set up listener for changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
           async (event, session) => {
             console.log('Auth state changed:', event, session);
@@ -176,6 +176,14 @@ function App() {
           element={
             <ProtectedRoute>
               <Myevents />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/Resale"
+          element={
+            <ProtectedRoute>
+              <Resale />
             </ProtectedRoute>
           }
         />

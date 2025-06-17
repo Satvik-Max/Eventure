@@ -5,6 +5,7 @@ export default function MyTickets() {
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [ticketFilter, setTicketFilter] = useState('all'); // 'upcoming', 'past', 'all'
+  const [resaleListings, setResaleListings] = useState([]);
 
   // Helper function to check if event date has passed
   const isEventExpired = (eventDate) => {
@@ -24,6 +25,90 @@ export default function MyTickets() {
     });
   };
 
+  // Fetch resale listings for current user
+  const fetchResaleListings = async (userEmail) => {
+    const { data, error } = await supabase
+      .from('resale_listings')
+      .select('*')
+      .eq('seller_email', userEmail)
+      .eq('is_sold', false);
+
+    if (!error && data) {
+      setResaleListings(data);
+    }
+  };
+
+  // Check if ticket is listed for resale
+  const isTicketOnResale = (eventId) => {
+    return resaleListings.some(listing => listing.event_id === eventId);
+  };
+
+  // Get resale listing for a ticket
+  const getResaleListing = (eventId) => {
+    return resaleListings.find(listing => listing.event_id === eventId);
+  };
+
+  // Handle resale listing
+  const handleResale = async (ticket) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('resale_listings')
+        .insert({
+          event_id: ticket.event_id, // Use the bigint event_id from tickets table
+          seller_address: ticket.owner_address,
+          seller_email: user.email,
+          price_wei: ticket.events.price_wei,
+          is_sold: false
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error creating resale listing:', error);
+        alert('Failed to create resale listing');
+        return;
+      }
+
+      // Update resale listings state
+      setResaleListings(prev => [...prev, data]);
+      alert('Ticket listed for resale successfully!');
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Failed to create resale listing');
+    }
+  };
+
+  // Handle cancel resale
+  const handleCancelResale = async (eventId) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('resale_listings')
+        .delete()
+        .eq('event_id', eventId)
+        .eq('seller_email', user.email)
+        .eq('is_sold', false);
+
+      if (error) {
+        console.error('Error canceling resale:', error);
+        alert('Failed to cancel resale listing');
+        return;
+      }
+
+      // Update resale listings state
+      setResaleListings(prev => prev.filter(listing => listing.event_id !== eventId));
+      alert('Resale listing canceled successfully!');
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Failed to cancel resale listing');
+    }
+  };
+
   useEffect(() => {
     const fetchTickets = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -33,13 +118,18 @@ export default function MyTickets() {
         .from('tickets')
         .select(`
           id,
+          event_id,
           attended,
           refunded,
+          reputation_decreased,
+          owner_address,
           events (
+            id,
             name,
             location,
             date,
-            is_cancelled
+            is_cancelled,
+            price_wei
           )
         `)
         .eq('user_email', user.email);
@@ -56,30 +146,36 @@ export default function MyTickets() {
         const isEventPassed = eventDate < now;
         const isMissed = isEventPassed && !ticket.attended && !ticket.events?.is_cancelled;
 
-        if (isMissed) {
-          // Update user reputation
-          const { data: userData } = await supabase
-            .from('profiles')
-            .select('reputation')
-            .eq('email', user.email)
-            .single();
+        // Only decrease reputation if event is missed AND reputation hasn't been decreased yet
+        if (isMissed && !ticket.reputation_decreased) {
+          try {
+            // Update user reputation
+            const { data: userData } = await supabase
+              .from('user_profiles')
+              .select('reputation')
+              .eq('email', user.email)
+              .single();
 
-          if (userData) {
-            const newReputation = Math.max(0, userData.reputation - 2);
-            await supabase
-              .from('profiles')
-              .update({ reputation: newReputation })
-              .eq('email', user.email);
+            if (userData) {
+              const newReputation = Math.max(0, userData.reputation - 2);
+              await supabase
+                .from('user_profiles')
+                .update({ reputation: newReputation })
+                .eq('email', user.email);
 
-            // Mark ticket as processed to avoid repeated reputation deductions
-            await supabase
-              .from('tickets')
-              .update({ attended: false }) // or add a new column like 'reputation_updated'
-              .eq('id', ticket.id);
+              // Mark ticket as reputation_decreased to avoid repeated deductions
+              await supabase
+                .from('tickets')
+                .update({ reputation_decreased: true })
+                .eq('id', ticket.id);
+            }
+          } catch (error) {
+            console.error('Error updating reputation:', error);
           }
 
           return {
             ...ticket,
+            reputation_decreased: true,
             missedEvent: true
           };
         }
@@ -88,6 +184,10 @@ export default function MyTickets() {
       }));
 
       setTickets(processedTickets);
+      
+      // Fetch resale listings after tickets are loaded
+      await fetchResaleListings(user.email);
+      
       setLoading(false);
     };
     fetchTickets();
@@ -143,6 +243,8 @@ export default function MyTickets() {
             {filteredTickets.map((ticket) => {
               const eventDate = ticket.events?.date ? new Date(ticket.events.date) : null;
               const isEventPassed = eventDate && eventDate < new Date();
+              const onResale = isTicketOnResale(ticket.event_id);
+              const canResale = !isEventPassed && !ticket.events?.is_cancelled && !ticket.attended;
               
               return (
                 <li key={ticket.id} className={`ticket-card ${isEventPassed ? 'past-event' : 'upcoming-event'}`}>
@@ -176,6 +278,34 @@ export default function MyTickets() {
                       ? <span className="status-attended">✔ Attended</span>
                       : <span className="status-pending">⏳ Not Attended</span>}
                   </p>
+                  
+                  {/* Resale Status and Actions */}
+                  {canResale && (
+                    <div className="resale-section">
+                      {onResale ? (
+                        <div className="resale-status">
+                          <p className="event-detail">
+                            <strong>Resale Status:</strong> <span className="status-resale">🔄 Listed for Resale</span>
+                          </p>
+                          <button 
+                            className="resale-btn cancel-resale-btn"
+                            onClick={() => handleCancelResale(ticket.event_id)}
+                          >
+                            Cancel Resale
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="resale-actions">
+                          <button 
+                            className="resale-btn"
+                            onClick={() => handleResale(ticket)}
+                          >
+                            💰 Resale Ticket
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </li>
               );
             })}
@@ -395,6 +525,63 @@ export default function MyTickets() {
           gap: 0.25rem;
         }
 
+        .status-resale {
+          color: #8b5cf6;
+          background: rgba(139, 92, 246, 0.1);
+          padding: 0.25rem 0.75rem;
+          border-radius: 12px;
+          border: 1px solid rgba(139, 92, 246, 0.2);
+          font-weight: 500;
+          font-size: 0.875rem;
+          display: inline-flex;
+          align-items: center;
+          gap: 0.25rem;
+        }
+
+        /* Resale Section */
+        .resale-section {
+          margin-top: 1rem;
+          padding-top: 1rem;
+          border-top: 1px solid #333;
+        }
+
+        .resale-status {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+        }
+
+        .resale-actions {
+          display: flex;
+          gap: 0.5rem;
+        }
+
+        .resale-btn {
+          padding: 0.5rem 1rem;
+          border: none;
+          border-radius: 8px;
+          cursor: pointer;
+          font-size: 0.9rem;
+          font-weight: 500;
+          transition: all 0.3s ease;
+          background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+          color: white;
+        }
+
+        .resale-btn:hover {
+          background: linear-gradient(135deg, #7c3aed, #6d28d9);
+          transform: translateY(-1px);
+        }
+
+        .cancel-resale-btn {
+          background: linear-gradient(135deg, #ef4444, #dc2626);
+          color: white;
+        }
+
+        .cancel-resale-btn:hover {
+          background: linear-gradient(135deg, #dc2626, #b91c1c);
+        }
+
         @media (max-width: 768px) {
           .my-tickets-container {
             padding: 1rem;
@@ -429,6 +616,14 @@ export default function MyTickets() {
 
           .event-badge {
             align-self: flex-start;
+          }
+
+          .resale-actions {
+            flex-direction: column;
+          }
+
+          .resale-btn {
+            width: 100%;
           }
         }
       `}</style>

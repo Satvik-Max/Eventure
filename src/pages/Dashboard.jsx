@@ -1,75 +1,98 @@
 /* global BigInt */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import ConnectWallet from '../components/ConnectWallet';
 import { Link } from 'react-router-dom';
-import { BrowserProvider , Contract} from 'ethers';
+import { BrowserProvider, Contract } from 'ethers';
 import EventureABI from '../abi/EventureNFT.json';
 
-const CONTRACT_ADDRESS = '0x985876c89bcD9a0eE777A94A1c494a25467Cbee9'; 
+const CONTRACT_ADDRESS = '0xeD71d2AA40Ebc5b52492806C3593D34Ce89Cb95A';
 
-// Helper function to check if event date has passed
 const isEventExpired = (eventDate) => {
   const currentDate = new Date();
   const eventDateTime = new Date(eventDate);
   return eventDateTime < currentDate;
 };
 
+const EventCard = React.memo(({ event, onBuyClick, walletAddress }) => {
+  const eventExpired = useMemo(() => isEventExpired(event.date), [event.date]);
+  const isDisabled = event.is_cancelled || eventExpired;
+  
+  const handleClick = useCallback(() => {
+    onBuyClick(event);
+  }, [event, onBuyClick]);
+
+  return (
+    <div className={`event-card ${eventExpired ? 'event-expired' : ''}`}>
+      <h3>{event.name}</h3>
+      {event.is_cancelled && (
+        <p style={{ color: 'red', fontWeight: 'bold' }}>❌ This event is canceled</p>
+      )}
+      {eventExpired && !event.is_cancelled && (
+        <p style={{ color: 'orange', fontWeight: 'bold' }}>⏰ Sorry, you're late! This event has passed</p>
+      )}
+      <p>{event.description}</p>
+      <p className="location-info"><strong>Location:</strong> {event.location}</p>
+      <p className="date-info"><strong>Date:</strong> {new Date(event.date).toLocaleString()}</p>
+      <p className="price-info"><strong>Price:</strong> {event.price_wei} wei</p>
+      <p className="tickets-info"><strong>Max Tickets:</strong> {event.max_ticket}</p>
+      <p className="organizer-info"><strong>Organizer:</strong> {event.organizer_email}</p>
+      
+      <button 
+        onClick={handleClick}
+        disabled={isDisabled || !walletAddress}
+      >
+        {!walletAddress ? 'Connect Wallet First' :
+         event.is_cancelled ? 'Cancelled' : 
+         eventExpired ? 'Event Passed' : 'Buy Ticket'}
+      </button>
+    </div>
+  );
+});
+
+EventCard.displayName = 'EventCard';
+
 async function handleBuyTicket(event, userEmail, walletAddress) {
   try {
-    console.log(" Pressed ");
     if (!walletAddress) 
-        throw new Error('Please connect your wallet first');
-    if (!window.ethereum) throw new Error('Please install MetaMask');
+      throw new Error('Please connect your wallet first');
+    if (!window.ethereum) 
+      throw new Error('Please install MetaMask');
     
-    // Check if event date has passed
     if (isEventExpired(event.date)) {
       throw new Error('⏰ Sorry, you\'re late! This event has already passed.');
     }
     
-    console.log(" Cheaking User ");
-    if (
-      walletAddress.toLowerCase() === String(event.organizer_wallet).toLowerCase()
-    ) {
+    if (walletAddress.toLowerCase() === String(event.organizer_wallet).toLowerCase()) {
       throw new Error("Organizers can't buy their own tickets");
     }
-    console.log("Getting User");
-    // ✅ Get Supabase user
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (!user || userError) throw new Error('You must be logged in to buy tickets');
-    console.log("cheaking availability ");
-    // ✅ Check ticket availability
-    const { data: eventData, error: fetchError } = await supabase
-      .from('events')
-      .select('max_ticket, ticket_sold')
-      .eq('event_id', event.event_id)
-      .single();
+
+    const [eventDataResult, userProfileResult] = await Promise.all([
+      supabase
+        .from('events')
+        .select('max_ticket, ticket_sold')
+        .eq('event_id', event.event_id)
+        .single(),
+      supabase
+        .from('user_profiles')
+        .select('reputation, total_tickets_minted')
+        .eq('id', user.id)
+        .single()
+    ]);
+
+    const { data: eventData, error: fetchError } = eventDataResult;
+    const { data: userProfile, error: profileError } = userProfileResult;
 
     if (fetchError || !eventData) throw new Error('Failed to fetch ticket data');
     if (eventData.ticket_sold >= eventData.max_ticket) throw new Error('⚠️ Event is sold out');
+    if (profileError || !userProfile) throw new Error('Failed to fetch user profile for reputation check');
+    if (userProfile.reputation < event.reputation_req) {
+      throw new Error(`❌ You need at least ${event.reputation_req} reputation to mint a ticket.`);
+    }
 
-    const { data: userProfile, error: profileErrorr } = await supabase
-        .from('user_profiles')
-        .select('reputation')
-        .eq('id', user.id)
-        .single();
-
-        if (profileErrorr || !userProfile) {
-        throw new Error('Failed to fetch user profile for reputation check');
-        }
-
-        // ✅ Fetch event's required reputation
-        const { reputation_req } = event;
-
-        if (userProfile.reputation < reputation_req) {
-        throw new Error(`❌ You need at least ${reputation_req} reputation to mint a ticket.`);
-     }
-
-    // ✅ Smart contract interaction
-    console.log(" Initiating Payment ");
     const provider = new BrowserProvider(window.ethereum);
     const signer = await provider.getSigner();
     const contract = new Contract(CONTRACT_ADDRESS, EventureABI.abi, signer);
@@ -82,8 +105,7 @@ async function handleBuyTicket(event, userEmail, walletAddress) {
     );
     await txResponse.wait();
 
-    // ✅ Insert into tickets
-    const { error: insertError } = await supabase.from('tickets').insert({
+    const ticketInsert = supabase.from('tickets').insert({
       event_id: event.event_id,
       owner_address: walletAddress,
       token_uri: 'default-ticket.json',
@@ -91,113 +113,162 @@ async function handleBuyTicket(event, userEmail, walletAddress) {
       created_at: new Date().toISOString(),
     });
 
-    if (insertError) {
-      console.error('❌ DB Insert Error:', insertError);
-      throw new Error('Failed to record ticket in database');
-    }
-
-    // ✅ Increment event's ticket_sold
-    const { error: updateError } = await supabase
+    const eventUpdate = supabase
       .from('events')
       .update({ ticket_sold: eventData.ticket_sold + 1 })
       .eq('event_id', event.event_id);
 
-    if (updateError) {
+    const profileUpdate = supabase
+      .from('user_profiles')
+      .update({ total_tickets_minted: (userProfile.total_tickets_minted || 0) + 1 })
+      .eq('id', user.id);
+
+    const [insertResult, updateResult, profileResult] = await Promise.all([
+      ticketInsert,
+      eventUpdate,
+      profileUpdate
+    ]);
+
+    if (insertResult.error) {
+      console.error('❌ DB Insert Error:', insertResult.error);
+      throw new Error('Failed to record ticket in database');
+    }
+
+    if (updateResult.error) {
       console.warn('⚠️ Could not update ticket_sold count.');
     }
 
-    // ✅ Increment total_tickets_minted in user_profiles
-    const { data: profileData, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('total_tickets_minted')
-      .eq('id', user.id)
-      .single();
-
-    if (!profileError && profileData) {
-      const newMintedCount = (profileData.total_tickets_minted || 0) + 1;
-
-      const { error: updateMintedError } = await supabase
-        .from('user_profiles')
-        .update({ total_tickets_minted: newMintedCount })
-        .eq('id', user.id);
-
-      if (updateMintedError) {
-        console.warn('⚠️ Failed to increment user ticket count');
-      }
-    } else {
-      console.warn('⚠️ Could not fetch user profile to increment ticket mint count');
+    if (profileResult.error) {
+      console.warn('⚠️ Failed to increment user ticket count');
     }
 
     alert('🎉 Ticket purchased successfully!');
+    return true;
   } catch (err) {
     console.error('Full error:', err);
     alert(`❌ ${err.message || 'Something went wrong'}`);
+    return false;
   }
 }
-
 
 export default function Dashboard() {
   const [events, setEvents] = useState([]);
   const [walletAddress, setWalletAddress] = useState('');
   const [userEmail, setUserEmail] = useState('');
-  const [eventFilter, setEventFilter] = useState('upcoming'); // 'upcoming', 'past', 'all'
+  const [eventFilter, setEventFilter] = useState('upcoming');
+  const [loading, setLoading] = useState(true);
 
-   const handleBuyClick = async (event) => {
-    if (!walletAddress) {
-      alert('Please connect your wallet first');
-      return;
-    }
-    try {
-      await handleBuyTicket(event, userEmail, walletAddress);
-    } finally {
-    }
-  };
-
-  // Filter events based on selected filter
-  const getFilteredEvents = () => {
+  // Memoized filtered events to prevent unnecessary recalculations
+  const filteredEvents = useMemo(() => {
     if (eventFilter === 'all') return events;
     
     return events.filter(event => {
       const expired = isEventExpired(event.date);
       return eventFilter === 'upcoming' ? !expired : expired;
     });
-  };
+  }, [events, eventFilter]);
+
+  // Memoized buy click handler
+  const handleBuyClick = useCallback(async (event) => {
+    if (!walletAddress) {
+      alert('Please connect your wallet first');
+      return;
+    }
+    
+    const success = await handleBuyTicket(event, userEmail, walletAddress);
+    if (success) {
+      // Optimistically update local state
+      setEvents(prevEvents => 
+        prevEvents.map(e => 
+          e.event_id === event.event_id 
+            ? { ...e, ticket_sold: (e.ticket_sold || 0) + 1 }
+            : e
+        )
+      );
+    }
+  }, [walletAddress, userEmail]);
+
+  // Memoized filter button click handlers
+  const handleFilterChange = useCallback((filter) => {
+    setEventFilter(filter);
+  }, []);
 
   useEffect(() => {
-    const fetchEvents = async () => {
-      const { data, error } = await supabase.from('events').select('*');
-      
-      if (!error) setEvents(data);
-    };
+    let mounted = true;
 
-    const fetchUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setUserEmail(user.email);
+    const fetchData = async () => {
+      try {
+        // Parallel fetch for better performance
+        const [eventsResult, userResult] = await Promise.all([
+          supabase.from('events').select('*'),
+          supabase.auth.getUser()
+        ]);
+
+        if (!mounted) return;
+
+        if (!eventsResult.error) {
+          setEvents(eventsResult.data || []);
+        }
+
+        if (userResult.data?.user) {
+          setUserEmail(userResult.data.user.email);
+        }
+      } catch (error) {
+        console.error('Failed to fetch data:', error);
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
       }
     };
 
-    fetchEvents();
-    fetchUser();
+    fetchData();
 
-    // Realtime subscription
+    // Debounced realtime subscription
     const subscription = supabase
       .channel('public:events')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'events' },
         (payload) => {
-          fetchEvents(); // or apply change optimally using `payload`
+          if (!mounted) return;
+          
+          // Optimistic updates instead of full refetch
+          if (payload.eventType === 'INSERT') {
+            setEvents(prev => [...prev, payload.new]);
+          } else if (payload.eventType === 'UPDATE') {
+            setEvents(prev => prev.map(event => 
+              event.event_id === payload.new.event_id ? payload.new : event
+            ));
+          } else if (payload.eventType === 'DELETE') {
+            setEvents(prev => prev.filter(event => 
+              event.event_id !== payload.old.event_id
+            ));
+          }
         }
       )
       .subscribe();
 
     return () => {
+      mounted = false;
       supabase.removeChannel(subscription);
     };
   }, []);
 
-  const filteredEvents = getFilteredEvents();
+  if (loading) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100vh',
+        background: '#0a0a0a',
+        color: '#fff'
+      }}>
+        <div>Loading events...</div>
+      </div>
+    );
+  }
 
   return (    
     <>
@@ -614,13 +685,16 @@ export default function Dashboard() {
 
         <section className="actions">
           <Link to="/CreateEvent">
-            <button> Create Event </button>
+            <button>Create Event</button>
           </Link>
-           <Link to="/Mytickets">
-            <button> My Tickets </button>
+          <Link to="/Mytickets">
+            <button>My Tickets</button>
           </Link>
           <Link to="/Myevents">
-            <button> My Events </button>
+            <button>My Events</button>
+          </Link>
+           <Link to="/Resale">
+            <button>Resale</button>
           </Link>
         </section>
 
@@ -637,19 +711,19 @@ export default function Dashboard() {
             <div className="filter-buttons">
               <button 
                 className={`filter-btn ${eventFilter === 'upcoming' ? 'active' : ''}`}
-                onClick={() => setEventFilter('upcoming')}
+                onClick={() => handleFilterChange('upcoming')}
               >
                 🚀 Upcoming
               </button>
               <button 
                 className={`filter-btn ${eventFilter === 'past' ? 'active' : ''}`}
-                onClick={() => setEventFilter('past')}
+                onClick={() => handleFilterChange('past')}
               >
                 📚 Past
               </button>
               <button 
                 className={`filter-btn ${eventFilter === 'all' ? 'active' : ''}`}
-                onClick={() => setEventFilter('all')}
+                onClick={() => handleFilterChange('all')}
               >
                 📋 All
               </button>
@@ -664,39 +738,14 @@ export default function Dashboard() {
                 {eventFilter === 'all' && 'No events yet. Be the first to create one!'}
               </p>
             ) : (
-              filteredEvents.map((event) => {
-                const eventExpired = isEventExpired(event.date);
-                const isDisabled = event.is_cancelled || eventExpired;
-                
-                return (
-                  <div 
-                    className={`event-card ${eventExpired ? 'event-expired' : ''}`} 
-                    key={event.event_id}
-                  >
-                    <h3>{event.name}</h3>
-                    {event.is_cancelled && (
-                        <p style={{ color: 'red', fontWeight: 'bold' }}>❌ This event is canceled</p>
-                    )}
-                    {eventExpired && !event.is_cancelled && (
-                        <p style={{ color: 'orange', fontWeight: 'bold' }}>⏰ Sorry, you're late! This event has passed</p>
-                    )}
-                    <p>{event.description}</p>
-                    <p className="location-info"><strong>Location:</strong> {event.location}</p>
-                    <p className="date-info"><strong>Date:</strong> {new Date(event.date).toLocaleString()}</p>
-                    <p className="price-info"><strong>Price:</strong> {event.price_wei} wei</p>
-                    <p className="tickets-info"><strong>Max Tickets:</strong> {event.max_ticket}</p>
-                    <p className="organizer-info"><strong>Organizer:</strong> {event.organizer_email}</p>
-                    
-                    <button 
-                        onClick={() => handleBuyClick(event)}
-                        disabled={isDisabled}
-                    >
-                        {event.is_cancelled ? 'Cancelled' : 
-                         eventExpired ? 'Event Passed' : 'Buy Ticket'}
-                    </button>
-                  </div>
-                );
-              })
+              filteredEvents.map((event) => (
+                <EventCard
+                  key={event.event_id}
+                  event={event}
+                  onBuyClick={handleBuyClick}
+                  walletAddress={walletAddress}
+                />
+              ))
             )}
           </div>
         </section>

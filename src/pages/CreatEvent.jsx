@@ -4,7 +4,7 @@ import { BrowserProvider, Contract } from 'ethers';
 import EventureABI from '../abi/EventureNFT.json';
 import { MapPin, Calendar, DollarSign, Star , Ticket, Plus, Type, FileText } from 'lucide-react';
 
-const CONTRACT_ADDRESS = '0x985876c89bcD9a0eE777A94A1c494a25467Cbee9';
+const CONTRACT_ADDRESS = '0xeD71d2AA40Ebc5b52492806C3593D34Ce89Cb95A';
 
 export default function CreateEvent() {
   const [walletAddress, setWalletAddress] = useState(null);
