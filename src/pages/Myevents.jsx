@@ -13,12 +13,10 @@ function MyEvents() {
       const now = new Date();
       const eventDate = new Date(event.date);
 
-      // Check if event already happened
       if (eventDate < now) {
         throw new Error("Event already happened. Cannot cancel after event date.");
       }
 
-      // 1. Mark event as cancelled
       const { error: cancelError } = await supabase
         .from('events')
         .update({ is_cancelled: true })
@@ -26,7 +24,6 @@ function MyEvents() {
          
       if (cancelError) throw new Error('Failed to cancel event');
 
-      // 2. Refund logic - fetch tickets for this event
       const { data: tickets, error: ticketError } = await supabase
         .from('tickets')
         .select('*')
@@ -35,7 +32,6 @@ function MyEvents() {
 
       if (ticketError) throw new Error('Failed to fetch tickets');
 
-      // Mark tickets as refunded
       if (tickets && tickets.length > 0) {
         for (const ticket of tickets) {
           await supabase
@@ -45,7 +41,6 @@ function MyEvents() {
         }
       }
 
-      // 3. Reduce organizer reputation by 5
       const { data: organizerProfile, error: profileError } = await supabase
         .from('user_profiles')
         .select('reputation')
@@ -61,7 +56,6 @@ function MyEvents() {
           .eq('email', event.organizer_email);
       }
 
-      // 4. Update local state
       setEvents(prev =>
         prev.map(e => e.event_id === event.event_id ? { ...e, is_cancelled: true } : e)
       );
@@ -75,7 +69,6 @@ function MyEvents() {
 
   async function handleMarkAttendance(eventId, userEmail) {
     try {
-      // Update ticket attendance
       const { error: ticketError } = await supabase
         .from('tickets')
         .update({ attended: true })
@@ -84,7 +77,6 @@ function MyEvents() {
 
       if (ticketError) throw new Error('Failed to update ticket attendance');
 
-      // Fetch user profile to update stats
       const { data: userProfile, error: profileError } = await supabase
         .from('user_profiles')
         .select('total_events_attended, reputation')
@@ -94,7 +86,6 @@ function MyEvents() {
       if (profileError) {
         console.warn('Could not fetch profile for', userEmail);
       } else {
-        // Update both total_events_attended and reputation
         const { error: updateError } = await supabase
           .from('user_profiles')
           .update({
@@ -106,7 +97,6 @@ function MyEvents() {
         if (updateError) throw new Error('Failed to update user profile');
       }
 
-      // Update local state
       setEvents(prevEvents => 
         prevEvents.map(event => {
           if (event.event_id === eventId) {
@@ -139,12 +129,11 @@ function MyEvents() {
           return;
         }
 
-        // Fetch events created by the current user
         const { data: eventList, error: eventError } = await supabase
           .from('events')
           .select('*')
           .eq('organizer_email', user.email)
-          .order('date', { ascending: false }); // Order by date, newest first
+          .order('date', { ascending: false });
 
         if (eventError) {
           console.error('Failed to fetch events:', eventError);
@@ -158,19 +147,16 @@ function MyEvents() {
           return;
         }
 
-        // Fetch tickets/attendees for these events
         const { data: ticketData, error: ticketError } = await supabase
           .from('tickets')
           .select('event_id, user_email, attended, refunded')
           .in('event_id', eventList.map(e => e.event_id))
-          .eq('refunded', false); // Only non-refunded tickets
+          .eq('refunded', false);
 
         if (ticketError) {
           console.error('Failed to fetch attendees:', ticketError);
-          // Continue without attendee data
         }
 
-        // Group tickets by event_id
         const grouped = {};
         if (ticketData) {
           ticketData.forEach(ticket => {
@@ -182,7 +168,6 @@ function MyEvents() {
           });
         }
 
-        // Combine events with their attendees and add status
         const now = new Date();
         const enrichedEvents = eventList.map(event => {
           const eventDate = new Date(event.date);
@@ -234,7 +219,6 @@ function MyEvents() {
     );
   }
 
-  // Separate events into upcoming and past/cancelled
   const upcomingEvents = events.filter(event => event.isUpcoming);
   const pastOrCancelledEvents = events.filter(event => !event.isUpcoming);
 
@@ -252,7 +236,6 @@ function MyEvents() {
         <h1>My Events</h1>
       </div>
       
-      {/* Upcoming Events Section */}
       {upcomingEvents.length > 0 && (
         <div className="events-section">
           <h2 className="section-title">Upcoming Events</h2>
@@ -270,7 +253,6 @@ function MyEvents() {
         </div>
       )}
 
-      {/* Past/Cancelled Events Section */}
       {pastOrCancelledEvents.length > 0 && (
         <div className="events-section">
           <h2 className="section-title">Past & Cancelled Events</h2>
@@ -291,7 +273,6 @@ function MyEvents() {
   );
 }
 
-// Separate component for event card to keep the main component cleaner
 function EventCard({ event, onCancel, onMarkAttendance, isUpcoming }) {
   const eventDate = new Date(event.date);
   const isPastEvent = eventDate < new Date();
@@ -412,14 +393,25 @@ function EventCard({ event, onCancel, onMarkAttendance, isUpcoming }) {
 }
 
 const styles = `
-  .my-events-container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 2rem;
-    background: #000;
-    color: #fff;
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  body {
+    background: #0a0a0a;
+    color: #ffffff;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     min-height: 100vh;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  }
+
+  .my-events-container {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+    padding: 2rem 3rem;
+    max-width: 1400px;
+    margin: 0 auto;
   }
 
   .header {
@@ -440,7 +432,6 @@ const styles = `
     font-weight: 700;
     margin: 0;
     color: #fff;
-    letter-spacing: -0.02em;
   }
 
   .events-section {
@@ -463,24 +454,23 @@ const styles = `
   }
 
   .event-card {
-    background: #111;
+    background: linear-gradient(135deg, #1a1a1a, #0f0f0f);
     border: 1px solid #333;
-    border-radius: 12px;
+    border-radius: 16px;
     padding: 1.5rem;
     transition: all 0.3s ease;
-    box-shadow: 0 4px 20px rgba(255, 255, 255, 0.05);
   }
 
   .event-card.past-event {
     opacity: 0.7;
     border-color: #444;
-    background: #0a0a0a;
+    background: linear-gradient(135deg, #0a0a0a, #111);
   }
 
   .event-card:hover {
     border-color: #555;
-    transform: translateY(-2px);
-    box-shadow: 0 8px 30px rgba(255, 255, 255, 0.1);
+    transform: translateY(-4px);
+    box-shadow: 0 8px 25px rgba(255, 255, 255, 0.1);
   }
 
   .event-header {
@@ -494,7 +484,6 @@ const styles = `
     font-weight: 600;
     margin: 0;
     color: #fff;
-    letter-spacing: -0.01em;
     display: flex;
     align-items: center;
     gap: 1rem;
@@ -536,10 +525,6 @@ const styles = `
     border: 1px solid #1a1a1a;
   }
 
-  .detail-item:last-child {
-    margin-bottom: 0;
-  }
-
   .detail-icon svg {
     color: #888;
     flex-shrink: 0;
@@ -550,8 +535,6 @@ const styles = `
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
-    min-width: 0;
-    flex: 1;
   }
 
   .detail-label {
@@ -566,7 +549,6 @@ const styles = `
     font-size: 1rem;
     color: #fff;
     font-weight: 400;
-    word-break: break-word;
   }
 
   .cancel-event-btn {
@@ -579,16 +561,11 @@ const styles = `
     font-weight: 500;
     font-size: 0.875rem;
     margin-bottom: 1.5rem;
-    transition: background-color 0.2s;
     width: 100%;
   }
 
   .cancel-event-btn:hover {
     background: #dc2626;
-  }
-
-  .cancel-event-btn:active {
-    background: #b91c1c;
   }
 
   .attendees-section {
@@ -640,13 +617,6 @@ const styles = `
     font-size: 0.875rem;
     color: #ccc;
     word-break: break-all;
-    flex: 1;
-  }
-
-  .attendee-actions {
-    display: flex;
-    align-items: center;
-    flex-shrink: 0;
   }
 
   .attended-badge {
@@ -668,15 +638,10 @@ const styles = `
     border: none;
     cursor: pointer;
     font-weight: 500;
-    transition: background-color 0.2s;
   }
 
   .mark-attendance-btn:hover {
     background: #2563eb;
-  }
-
-  .mark-attendance-btn:active {
-    background: #1d4ed8;
   }
 
   .mark-attendance-btn:disabled {
@@ -689,14 +654,9 @@ const styles = `
     align-items: center;
     gap: 0.5rem;
     padding: 1rem;
-    text-align: center;
     color: #666;
     font-size: 0.875rem;
     justify-content: center;
-  }
-
-  .no-attendees-icon svg {
-    color: #444;
   }
 
   .loading-container {
@@ -704,10 +664,8 @@ const styles = `
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    min-height: 400px;
+    min-height: 100vh;
     gap: 1rem;
-    color: #fff;
-    background: #000;
   }
 
   .spinner {
@@ -724,20 +682,12 @@ const styles = `
     100% { transform: rotate(360deg); }
   }
 
-  .loading-container p {
-    font-size: 1.1rem;
-    color: #888;
-  }
-
   .empty-state {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    min-height: 400px;
-    text-align: center;
-    color: #fff;
-    background: #000;
+    min-height: 100vh;
     gap: 1.5rem;
   }
 
@@ -749,7 +699,6 @@ const styles = `
     font-size: 1.5rem;
     font-weight: 600;
     margin: 0;
-    color: #fff;
   }
 
   .empty-state p {
@@ -781,10 +730,6 @@ const styles = `
       gap: 0.5rem;
     }
 
-    .attendee-actions {
-      align-self: flex-end;
-    }
-
     .event-title {
       flex-direction: column;
       align-items: flex-start;
@@ -793,7 +738,6 @@ const styles = `
   }
 `;
 
-// Add styles to the document and export the main component
 export default function MyEventsWithStyles() {
   return (
     <>

@@ -51,41 +51,19 @@ export default function Login() {
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          background: #0a0a0a;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           padding: 20px;
-          position: relative;
-          overflow: hidden;
-        }
-
-        .login-container::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000"><defs><radialGradient id="a" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="%23ffffff" stop-opacity="0.1"/><stop offset="100%" stop-color="%23ffffff" stop-opacity="0"/></radialGradient></defs><circle cx="200" cy="200" r="100" fill="url(%23a)"/><circle cx="800" cy="300" r="150" fill="url(%23a)"/><circle cx="400" cy="700" r="120" fill="url(%23a)"/><circle cx="900" cy="800" r="80" fill="url(%23a)"/></svg>');
-          opacity: 0.3;
-          animation: float 20s ease-in-out infinite;
-        }
-
-        @keyframes float {
-          0%, 100% { transform: translateY(0px) rotate(0deg); }
-          50% { transform: translateY(-20px) rotate(180deg); }
         }
 
         .login-card {
-          background: rgba(255, 255, 255, 0.95);
-          backdrop-filter: blur(20px);
-          border: 1px solid rgba(255, 255, 255, 0.2);
-          border-radius: 24px;
-          padding: 48px;
-          box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
-          position: relative;
-          z-index: 1;
-          max-width: 400px;
+          background: linear-gradient(135deg, #1a1a1a, #0f0f0f);
+          border: 1px solid #333;
+          border-radius: 16px;
+          padding: 3rem;
+          box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
           width: 100%;
+          max-width: 400px;
           animation: slideUp 0.8s ease-out;
         }
 
@@ -101,14 +79,11 @@ export default function Login() {
         }
 
         .login-title {
-          font-size: 32px;
-          font-weight: 700;
-          margin-bottom: 32px;
+          font-size: 2rem;
+          font-weight: 600;
+          margin-bottom: 2rem;
           text-align: center;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
+          color: #ffffff;
           position: relative;
         }
 
@@ -119,15 +94,15 @@ export default function Login() {
           left: 50%;
           transform: translateX(-50%);
           width: 60px;
-          height: 3px;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          height: 2px;
+          background: #ffffff;
           border-radius: 2px;
         }
 
         .login-form {
           display: flex;
           flex-direction: column;
-          gap: 24px;
+          gap: 1.5rem;
         }
 
         .input-group {
@@ -136,65 +111,40 @@ export default function Login() {
 
         .login-input {
           width: 100%;
-          padding: 16px 20px;
-          border: 2px solid #e1e5e9;
-          border-radius: 12px;
-          font-size: 16px;
-          background: #fafbfc;
+          padding: 1rem;
+          border: 1px solid #333;
+          border-radius: 8px;
+          font-size: 1rem;
+          background: #1a1a1a;
+          color: #ffffff;
           transition: all 0.3s ease;
           outline: none;
-          box-sizing: border-box;
         }
 
         .login-input:focus {
-          border-color: #667eea;
-          background: #ffffff;
-          box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
-          transform: translateY(-2px);
+          border-color: #666;
+          box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
         }
 
         .login-input::placeholder {
-          color: #94a3b8;
-          transition: all 0.3s ease;
-        }
-
-        .login-input:focus::placeholder {
-          color: #cbd5e1;
+          color: #666;
         }
 
         .login-button {
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          color: white;
-          padding: 16px 32px;
+          background: linear-gradient(135deg, #ffffff, #cccccc);
+          color: #000000;
+          padding: 1rem;
           border: none;
-          border-radius: 12px;
-          font-size: 16px;
+          border-radius: 8px;
+          font-size: 1rem;
           font-weight: 600;
           cursor: pointer;
           transition: all 0.3s ease;
-          position: relative;
-          overflow: hidden;
-          box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-        }
-
-        .login-button::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: -100%;
-          width: 100%;
-          height: 100%;
-          background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-          transition: left 0.5s ease;
         }
 
         .login-button:hover {
+          background: linear-gradient(135deg, #cccccc, #999999);
           transform: translateY(-2px);
-          box-shadow: 0 8px 25px rgba(102, 126, 234, 0.5);
-        }
-
-        .login-button:hover::before {
-          left: 100%;
         }
 
         .login-button:active {
@@ -202,13 +152,15 @@ export default function Login() {
         }
 
         .status-message {
-          margin-top: 24px;
-          padding: 12px 16px;
+          margin-top: 1.5rem;
+          padding: 1rem;
           border-radius: 8px;
-          font-size: 14px;
+          font-size: 0.9rem;
           text-align: center;
           animation: fadeIn 0.5s ease-out;
-          backdrop-filter: blur(10px);
+          background: rgba(255, 255, 255, 0.1);
+          color: #ffffff;
+          border: 1px solid #333;
         }
 
         @keyframes fadeIn {
@@ -216,32 +168,13 @@ export default function Login() {
           to { opacity: 1; transform: translateY(0); }
         }
 
-        .status-success {
-          background: rgba(34, 197, 94, 0.1);
-          color: #059669;
-          border: 1px solid rgba(34, 197, 94, 0.2);
-        }
-
-        .status-error {
-          background: rgba(239, 68, 68, 0.1);
-          color: #dc2626;
-          border: 1px solid rgba(239, 68, 68, 0.2);
-        }
-
-        .status-loading {
-          background: rgba(59, 130, 246, 0.1);
-          color: #2563eb;
-          border: 1px solid rgba(59, 130, 246, 0.2);
-        }
-
         @media (max-width: 480px) {
           .login-card {
-            padding: 32px 24px;
-            margin: 16px;
+            padding: 2rem 1.5rem;
           }
           
           .login-title {
-            font-size: 28px;
+            font-size: 1.5rem;
           }
         }
       `}</style>
@@ -267,11 +200,7 @@ export default function Login() {
           </button>
         </form>
         {status && (
-          <p className={`status-message ${
-            status.includes('Error') ? 'status-error' : 
-            status.includes('sent') ? 'status-success' : 
-            'status-loading'
-          }`}>
+          <p className="status-message">
             {status}
           </p>
         )}

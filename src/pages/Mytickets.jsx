@@ -4,28 +4,25 @@ import { supabase } from '../lib/supabaseClient';
 export default function MyTickets() {
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [ticketFilter, setTicketFilter] = useState('all'); // 'upcoming', 'past', 'all'
+  const [ticketFilter, setTicketFilter] = useState('all');
   const [resaleListings, setResaleListings] = useState([]);
 
-  // Helper function to check if event date has passed
   const isEventExpired = (eventDate) => {
     const currentDate = new Date();
     const eventDateTime = new Date(eventDate);
     return eventDateTime < currentDate;
   };
 
-  // Filter tickets based on selected filter
   const getFilteredTickets = () => {
     if (ticketFilter === 'all') return tickets;
     
     return tickets.filter(ticket => {
-      if (!ticket.events?.date) return false; // Skip tickets without valid dates
+      if (!ticket.events?.date) return false;
       const expired = isEventExpired(ticket.events.date);
       return ticketFilter === 'upcoming' ? !expired : expired;
     });
   };
 
-  // Fetch resale listings for current user
   const fetchResaleListings = async (userEmail) => {
     const { data, error } = await supabase
       .from('resale_listings')
@@ -38,17 +35,10 @@ export default function MyTickets() {
     }
   };
 
-  // Check if ticket is listed for resale
   const isTicketOnResale = (eventId) => {
     return resaleListings.some(listing => listing.event_id === eventId);
   };
 
-  // Get resale listing for a ticket
-  const getResaleListing = (eventId) => {
-    return resaleListings.find(listing => listing.event_id === eventId);
-  };
-
-  // Handle resale listing
   const handleResale = async (ticket) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -57,7 +47,7 @@ export default function MyTickets() {
       const { data, error } = await supabase
         .from('resale_listings')
         .insert({
-          event_id: ticket.event_id, // Use the bigint event_id from tickets table
+          event_id: ticket.event_id,
           seller_address: ticket.owner_address,
           seller_email: user.email,
           price_wei: ticket.events.price_wei,
@@ -72,7 +62,6 @@ export default function MyTickets() {
         return;
       }
 
-      // Update resale listings state
       setResaleListings(prev => [...prev, data]);
       alert('Ticket listed for resale successfully!');
     } catch (error) {
@@ -81,7 +70,6 @@ export default function MyTickets() {
     }
   };
 
-  // Handle cancel resale
   const handleCancelResale = async (eventId) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -100,7 +88,6 @@ export default function MyTickets() {
         return;
       }
 
-      // Update resale listings state
       setResaleListings(prev => prev.filter(listing => listing.event_id !== eventId));
       alert('Resale listing canceled successfully!');
     } catch (error) {
@@ -139,17 +126,14 @@ export default function MyTickets() {
         return;
       }
 
-      // Process tickets to check for missed events
       const processedTickets = await Promise.all(data.map(async (ticket) => {
         const eventDate = new Date(ticket.events?.date);
         const now = new Date();
         const isEventPassed = eventDate < now;
         const isMissed = isEventPassed && !ticket.attended && !ticket.events?.is_cancelled;
 
-        // Only decrease reputation if event is missed AND reputation hasn't been decreased yet
         if (isMissed && !ticket.reputation_decreased) {
           try {
-            // Update user reputation
             const { data: userData } = await supabase
               .from('user_profiles')
               .select('reputation')
@@ -163,7 +147,6 @@ export default function MyTickets() {
                 .update({ reputation: newReputation })
                 .eq('email', user.email);
 
-              // Mark ticket as reputation_decreased to avoid repeated deductions
               await supabase
                 .from('tickets')
                 .update({ reputation_decreased: true })
@@ -184,10 +167,7 @@ export default function MyTickets() {
       }));
 
       setTickets(processedTickets);
-      
-      // Fetch resale listings after tickets are loaded
       await fetchResaleListings(user.email);
-      
       setLoading(false);
     };
     fetchTickets();
@@ -195,132 +175,37 @@ export default function MyTickets() {
 
   const filteredTickets = getFilteredTickets();
 
-  if (loading) return <p>Loading your tickets...</p>;
+  if (loading) {
+    return (
+      <div className="loading-container">
+        <div className="spinner"></div>
+        <p>Loading your tickets...</p>
+      </div>
+    );
+  }
 
   return (
-    <>
-      <div className="my-tickets-container">
-        <div className="header-section">
-          <h1 className="page-title">My Tickets</h1>
-          
-          <div className="filter-section">
-            <div className="ticket-count">
-              Showing {filteredTickets.length} of {tickets.length} tickets
-            </div>
-            <div className="filter-buttons">
-              <button 
-                className={`filter-btn ${ticketFilter === 'upcoming' ? 'active' : ''}`}
-                onClick={() => setTicketFilter('upcoming')}
-              >
-                🚀 Upcoming
-              </button>
-              <button 
-                className={`filter-btn ${ticketFilter === 'past' ? 'active' : ''}`}
-                onClick={() => setTicketFilter('past')}
-              >
-                📚 Past
-              </button>
-              <button 
-                className={`filter-btn ${ticketFilter === 'all' ? 'active' : ''}`}
-                onClick={() => setTicketFilter('all')}
-              >
-                📋 All
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {filteredTickets.length === 0 ? (
-          <div className="no-tickets">
-            <p>
-              {ticketFilter === 'upcoming' && (tickets.length === 0 ? "You haven't bought any tickets yet." : "No upcoming events found.")}
-              {ticketFilter === 'past' && (tickets.length === 0 ? "You haven't bought any tickets yet." : "No past events found.")}
-              {ticketFilter === 'all' && "You haven't bought any tickets yet."}
-            </p>
-          </div>
-        ) : (
-          <ul className="tickets-list">
-            {filteredTickets.map((ticket) => {
-              const eventDate = ticket.events?.date ? new Date(ticket.events.date) : null;
-              const isEventPassed = eventDate && eventDate < new Date();
-              const onResale = isTicketOnResale(ticket.event_id);
-              const canResale = !isEventPassed && !ticket.events?.is_cancelled && !ticket.attended;
-              
-              return (
-                <li key={ticket.id} className={`ticket-card ${isEventPassed ? 'past-event' : 'upcoming-event'}`}>
-                  <div className="ticket-header">
-                    <h2 className="event-name">{ticket.events?.name || '[Event missing]'}</h2>
-                    <span className={`event-badge ${isEventPassed ? 'past-badge' : 'upcoming-badge'}`}>
-                      {isEventPassed ? '📚 Past' : '🚀 Upcoming'}
-                    </span>
-                  </div>
-                  <p className="event-detail">
-                    <strong>Location:</strong> {ticket.events?.location || 'N/A'}
-                  </p>
-                  <p className="event-detail">
-                    <strong>Date:</strong> {eventDate ? eventDate.toLocaleString() : 'N/A'}
-                  </p>
-                  {isEventPassed && !ticket.attended && !ticket.events?.is_cancelled && (
-                    <p className="event-detail missed-event">
-                      <strong>Note:</strong> <span style={{ color: 'red' }}>Event is gone! You missed it.</span>
-                    </p>
-                  )}
-                 <p className="event-detail">
-                  <strong>Status:</strong>{' '}
-                  {ticket.events?.is_cancelled 
-                      ? <>
-                          <span style={{ color: 'red' }}>❌ Cancelled</span>
-                          {ticket.refunded 
-                          ? <span style={{ color: 'green', marginLeft: '0.5rem' }}>(Refunded)</span>
-                          : <span style={{ color: 'orange', marginLeft: '0.5rem' }}>(Not Refunded)</span>}
-                      </>
-                      : ticket.attended 
-                      ? <span className="status-attended">✔ Attended</span>
-                      : <span className="status-pending">⏳ Not Attended</span>}
-                  </p>
-                  
-                  {/* Resale Status and Actions */}
-                  {canResale && (
-                    <div className="resale-section">
-                      {onResale ? (
-                        <div className="resale-status">
-                          <p className="event-detail">
-                            <strong>Resale Status:</strong> <span className="status-resale">🔄 Listed for Resale</span>
-                          </p>
-                          <button 
-                            className="resale-btn cancel-resale-btn"
-                            onClick={() => handleCancelResale(ticket.event_id)}
-                          >
-                            Cancel Resale
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="resale-actions">
-                          <button 
-                            className="resale-btn"
-                            onClick={() => handleResale(ticket)}
-                          >
-                            💰 Resale Ticket
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
+    <div className="my-tickets-container">
       <style jsx>{`
-        .my-tickets-container {
-          max-width: 900px;
-          margin: 0 auto;
-          padding: 2rem;
-          background: #000;
-          color: #fff;
+        * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+        }
+
+        body {
+          background: #0a0a0a;
+          color: #ffffff;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           min-height: 100vh;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+        }
+
+        .my-tickets-container {
+          min-height: 100vh;
+          background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+          padding: 2rem 3rem;
+          max-width: 1400px;
+          margin: 0 auto;
         }
 
         .header-section {
@@ -330,11 +215,14 @@ export default function MyTickets() {
         }
 
         .page-title {
-          font-size: 2rem;
+          font-size: 2.5rem;
           font-weight: 700;
           margin: 0 0 1rem 0;
           color: #fff;
-          letter-spacing: -0.02em;
+          background: linear-gradient(45deg, #ffffff, #888888);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
         }
 
         .filter-section {
@@ -350,7 +238,6 @@ export default function MyTickets() {
           font-size: 0.9rem;
         }
 
-        /* Filter Buttons */
         .filter-buttons {
           display: flex;
           gap: 0.5rem;
@@ -408,38 +295,17 @@ export default function MyTickets() {
         }
 
         .ticket-card {
-          background: #111;
+          background: linear-gradient(135deg, #1a1a1a, #0f0f0f);
           border: 1px solid #333;
-          border-radius: 12px;
+          border-radius: 16px;
           padding: 1.5rem;
-          box-shadow: 0 4px 20px rgba(255, 255, 255, 0.05);
           transition: all 0.3s ease;
-          position: relative;
-        }
-
-        .ticket-card::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          height: 3px;
-          border-radius: 12px 12px 0 0;
-          transition: opacity 0.3s ease;
-        }
-
-        .ticket-card.upcoming-event::before {
-          background: linear-gradient(90deg, #22c55e, #16a34a);
-        }
-
-        .ticket-card.past-event::before {
-          background: linear-gradient(90deg, #6b7280, #4b5563);
         }
 
         .ticket-card:hover {
           border-color: #555;
-          transform: translateY(-2px);
-          box-shadow: 0 8px 30px rgba(255, 255, 255, 0.1);
+          transform: translateY(-4px);
+          box-shadow: 0 8px 25px rgba(255, 255, 255, 0.1);
         }
 
         .ticket-header {
@@ -455,8 +321,6 @@ export default function MyTickets() {
           font-weight: 600;
           margin: 0;
           color: #fff;
-          letter-spacing: -0.01em;
-          flex: 1;
         }
 
         .event-badge {
@@ -464,7 +328,6 @@ export default function MyTickets() {
           border-radius: 20px;
           font-size: 0.8rem;
           font-weight: 600;
-          white-space: nowrap;
         }
 
         .upcoming-badge {
@@ -483,77 +346,29 @@ export default function MyTickets() {
           font-size: 1rem;
           margin: 0.75rem 0;
           color: #ccc;
-          line-height: 1.5;
-        }
-
-        .event-detail.missed-event {
-          color: #ff6b6b;
         }
 
         .event-detail strong {
           color: #888;
           font-weight: 500;
-          text-transform: uppercase;
-          font-size: 0.875rem;
-          letter-spacing: 0.05em;
-          margin-right: 0.5rem;
         }
 
         .status-attended {
           color: #22c55e;
-          background: rgba(34, 197, 94, 0.1);
-          padding: 0.25rem 0.75rem;
-          border-radius: 12px;
-          border: 1px solid rgba(34, 197, 94, 0.2);
-          font-weight: 500;
-          font-size: 0.875rem;
-          display: inline-flex;
-          align-items: center;
-          gap: 0.25rem;
         }
 
         .status-pending {
           color: #f59e0b;
-          background: rgba(245, 158, 11, 0.1);
-          padding: 0.25rem 0.75rem;
-          border-radius: 12px;
-          border: 1px solid rgba(245, 158, 11, 0.2);
-          font-weight: 500;
-          font-size: 0.875rem;
-          display: inline-flex;
-          align-items: center;
-          gap: 0.25rem;
         }
 
         .status-resale {
           color: #8b5cf6;
-          background: rgba(139, 92, 246, 0.1);
-          padding: 0.25rem 0.75rem;
-          border-radius: 12px;
-          border: 1px solid rgba(139, 92, 246, 0.2);
-          font-weight: 500;
-          font-size: 0.875rem;
-          display: inline-flex;
-          align-items: center;
-          gap: 0.25rem;
         }
 
-        /* Resale Section */
         .resale-section {
           margin-top: 1rem;
           padding-top: 1rem;
           border-top: 1px solid #333;
-        }
-
-        .resale-status {
-          display: flex;
-          flex-direction: column;
-          gap: 0.5rem;
-        }
-
-        .resale-actions {
-          display: flex;
-          gap: 0.5rem;
         }
 
         .resale-btn {
@@ -561,25 +376,44 @@ export default function MyTickets() {
           border: none;
           border-radius: 8px;
           cursor: pointer;
-          font-size: 0.9rem;
           font-weight: 500;
-          transition: all 0.3s ease;
           background: linear-gradient(135deg, #8b5cf6, #7c3aed);
           color: white;
         }
 
         .resale-btn:hover {
           background: linear-gradient(135deg, #7c3aed, #6d28d9);
-          transform: translateY(-1px);
         }
 
         .cancel-resale-btn {
           background: linear-gradient(135deg, #ef4444, #dc2626);
-          color: white;
         }
 
         .cancel-resale-btn:hover {
           background: linear-gradient(135deg, #dc2626, #b91c1c);
+        }
+
+        .loading-container {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          min-height: 100vh;
+          gap: 1rem;
+        }
+
+        .spinner {
+          width: 40px;
+          height: 40px;
+          border: 3px solid #333;
+          border-top: 3px solid #fff;
+          border-radius: 50%;
+          animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
         }
 
         @media (max-width: 768px) {
@@ -588,45 +422,125 @@ export default function MyTickets() {
           }
 
           .page-title {
-            font-size: 1.75rem;
-          }
-
-          .filter-section {
-            flex-direction: column;
-            align-items: stretch;
-          }
-
-          .filter-buttons {
-            align-self: stretch;
-            justify-content: center;
+            font-size: 2rem;
           }
 
           .ticket-card {
             padding: 1rem;
           }
-
-          .ticket-header {
-            flex-direction: column;
-            gap: 0.5rem;
-          }
-
-          .event-name {
-            font-size: 1.25rem;
-          }
-
-          .event-badge {
-            align-self: flex-start;
-          }
-
-          .resale-actions {
-            flex-direction: column;
-          }
-
-          .resale-btn {
-            width: 100%;
-          }
         }
       `}</style>
-    </>
+
+      <div className="header-section">
+        <h1 className="page-title">My Tickets</h1>
+        
+        <div className="filter-section">
+          <div className="ticket-count">
+            Showing {filteredTickets.length} of {tickets.length} tickets
+          </div>
+          <div className="filter-buttons">
+            <button 
+              className={`filter-btn ${ticketFilter === 'upcoming' ? 'active' : ''}`}
+              onClick={() => setTicketFilter('upcoming')}
+            >
+              🚀 Upcoming
+            </button>
+            <button 
+              className={`filter-btn ${ticketFilter === 'past' ? 'active' : ''}`}
+              onClick={() => setTicketFilter('past')}
+            >
+              📚 Past
+            </button>
+            <button 
+              className={`filter-btn ${ticketFilter === 'all' ? 'active' : ''}`}
+              onClick={() => setTicketFilter('all')}
+            >
+              📋 All
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {filteredTickets.length === 0 ? (
+        <div className="no-tickets">
+          <p>
+            {ticketFilter === 'upcoming' && (tickets.length === 0 ? "You haven't bought any tickets yet." : "No upcoming events found.")}
+            {ticketFilter === 'past' && (tickets.length === 0 ? "You haven't bought any tickets yet." : "No past events found.")}
+            {ticketFilter === 'all' && "You haven't bought any tickets yet."}
+          </p>
+        </div>
+      ) : (
+        <ul className="tickets-list">
+          {filteredTickets.map((ticket) => {
+            const eventDate = ticket.events?.date ? new Date(ticket.events.date) : null;
+            const isEventPassed = eventDate && eventDate < new Date();
+            const onResale = isTicketOnResale(ticket.event_id);
+            const canResale = !isEventPassed && !ticket.events?.is_cancelled && !ticket.attended;
+            
+            return (
+              <li key={ticket.id} className={`ticket-card ${isEventPassed ? 'past-event' : 'upcoming-event'}`}>
+                <div className="ticket-header">
+                  <h2 className="event-name">{ticket.events?.name || '[Event missing]'}</h2>
+                  <span className={`event-badge ${isEventPassed ? 'past-badge' : 'upcoming-badge'}`}>
+                    {isEventPassed ? '📚 Past' : '🚀 Upcoming'}
+                  </span>
+                </div>
+                <p className="event-detail">
+                  <strong>Location:</strong> {ticket.events?.location || 'N/A'}
+                </p>
+                <p className="event-detail">
+                  <strong>Date:</strong> {eventDate ? eventDate.toLocaleString() : 'N/A'}
+                </p>
+                {isEventPassed && !ticket.attended && !ticket.events?.is_cancelled && (
+                  <p className="event-detail missed-event">
+                    <strong>Note:</strong> <span style={{ color: 'red' }}>Event is gone! You missed it.</span>
+                  </p>
+                )}
+                <p className="event-detail">
+                  <strong>Status:</strong>{' '}
+                  {ticket.events?.is_cancelled 
+                      ? <>
+                          <span style={{ color: 'red' }}>❌ Cancelled</span>
+                          {ticket.refunded 
+                          ? <span style={{ color: 'green', marginLeft: '0.5rem' }}>(Refunded)</span>
+                          : <span style={{ color: 'orange', marginLeft: '0.5rem' }}>(Not Refunded)</span>}
+                      </>
+                      : ticket.attended 
+                      ? <span className="status-attended">✔ Attended</span>
+                      : <span className="status-pending">⏳ Not Attended</span>}
+                </p>
+                
+                {canResale && (
+                  <div className="resale-section">
+                    {onResale ? (
+                      <div className="resale-status">
+                        <p className="event-detail">
+                          <strong>Resale Status:</strong> <span className="status-resale">🔄 Listed for Resale</span>
+                        </p>
+                        <button 
+                          className="resale-btn cancel-resale-btn"
+                          onClick={() => handleCancelResale(ticket.event_id)}
+                        >
+                          Cancel Resale
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="resale-actions">
+                        <button 
+                          className="resale-btn"
+                          onClick={() => handleResale(ticket)}
+                        >
+                          💰 Resale Ticket
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }
